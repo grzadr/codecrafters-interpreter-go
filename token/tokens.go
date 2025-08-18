@@ -6,18 +6,48 @@ import (
 	"os"
 )
 
+// type TokenType interface {
+// 	Name() string
+// 	Lexeme() string
+// }
+
+// type TokenType struct {
+// 	name   string
+// 	lexeme string
+// }
+
+// var LEFT_PAREN = TokenType{name: "LEFT_PAREN", lexeme: "("}
+
+// const (
+// 	LEFT_PAREN  = "("
+// 	RIGHT_PAREN = ")"
+// 	EOF         = ""
+// )
+
+type TokenType int
+
+const (
+	EOF TokenType = iota
+	LEFT_PAREN
+	RIGHT_PAREN
+)
+
+var tokenLexemes = [...]string{
+	"",
+	"(",
+	")",
+}
+
+type Token struct {
+	tokenType TokenType
+	lexeme    string
+	literal   string
+	err       error
+}
+
 type Tokenizer struct {
 	data   []byte
 	offset int
-}
-
-var tokens = map[string]
-
-type Token struct {
-	class   TokenType
-	lexeme  string
-	literal string
-	err     error
 }
 
 func Tokenize(filename string) iter.Seq[Token] {
