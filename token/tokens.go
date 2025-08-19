@@ -3,7 +3,6 @@ package token
 import (
 	"fmt"
 	"iter"
-	"log"
 	"os"
 	"slices"
 	"strconv"
@@ -148,11 +147,11 @@ func newToken(ttype tokenType) Token {
 	}
 }
 
-func newTokenEOF() Token {
+func newEOFToken() Token {
 	return newToken(EOF)
 }
 
-func TokenUnexpectedChar(line int, b byte) Token {
+func newUnexpectedCharToken(line int, b byte) Token {
 	return Token{
 		err: fmt.Errorf(
 			"[line %d] Error: Unexpected character: %s",
@@ -162,12 +161,20 @@ func TokenUnexpectedChar(line int, b byte) Token {
 	}
 }
 
-func TokenUnterminatedString(line int) Token {
+func newUnterminatedStringToken(line int) Token {
 	return Token{
 		err: fmt.Errorf(
 			"[line %d] Error: Unterminated string.",
 			line,
 		),
+	}
+}
+
+func newNumberToken(num string) Token {
+	return Token{
+		tokenType: NUMBER,
+		lexeme:    lexeme(num),
+		literal:   newNumberLiteral(num),
 	}
 }
 
@@ -215,7 +222,7 @@ func scanString() scanFunc {
 		if !found {
 			t.skipLine()
 
-			return TokenUnterminatedString(t.lineNum)
+			return newUnterminatedStringToken(t.lineNum)
 		}
 
 		return Token{
@@ -233,16 +240,6 @@ func scanNumber(b byte) scanFunc {
 		for {
 			next, ok := t.peek()
 			if !ok || (!unicode.IsDigit(rune(next)) && next != '.') {
-				log.Println(
-					"break",
-					t.left(),
-					string(data),
-					string(next),
-					!ok,
-					!unicode.IsDigit(rune(next)),
-					next != '.',
-				)
-
 				break
 			}
 
@@ -251,17 +248,45 @@ func scanNumber(b byte) scanFunc {
 			data = append(data, next)
 		}
 
-		return Token{
-			tokenType: NUMBER,
-			lexeme:    lexeme(data),
-			literal:   newNumberLiteral(string(data)),
+		return newNumberToken(string(data))
+	}
+}
+
+func scanIdentifier(b byte) scanFunc {
+	return func(t *Tokenizer) Token {
+		data := []byte{b}
+
+		for {
+			next, ok := t.peek()
+
+			if !ok ||
+				!(unicode.IsLetter(rune(next)) || unicode.IsDigit(rune(next)) || next == '_') {
+				break
+			}
+
+			t.skip()
+
+			data = append(data, next)
+		}
+
+		lexeme := lexeme(data)
+
+		reserved, found := reservedLexemeIndex[lexeme]
+
+		if !found {
+			return Token{
+				tokenType: IDENTIFIER,
+				lexeme:    lexeme,
+				literal:   StringLiteral("null"),
+			}
 		}
 	}
 }
 
 type (
-	scanFunc    func(t *Tokenizer) Token
-	lexemeIndex map[lexemePrefix]scanFunc
+	scanFunc      func(t *Tokenizer) Token
+	lexemeIndex   map[lexemePrefix]scanFunc
+	reservedIndex map[lexeme]tokenType
 )
 
 func newLexemeIndex() lexemeIndex {
@@ -293,10 +318,26 @@ func (i lexemeIndex) find(l lexemePrefix) (f scanFunc, found bool) {
 
 	f, found = i[l]
 
+	if !found && (unicode.IsLetter(rune(l)) || l == '_') {
+		return scanIdentifier(byte(l)), true
+	}
+
 	return
 }
 
 var mainLexemeIndex = newLexemeIndex()
+
+func newReservedLexemeIndex() reservedIndex {
+	index := make(reservedIndex, len(defaultLexemes)-int(AND))
+
+	for i, lexeme := range defaultLexemes[AND:] {
+		index[lexeme] = tokenType(i + int(AND))
+	}
+
+	return index
+}
+
+var reservedLexemeIndex = newReservedLexemeIndex()
 
 func readFileContent(filename string) (content []byte, err error) {
 	content, err = os.ReadFile(filename)
@@ -406,7 +447,7 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 
 			iterations++
 			if !ok {
-				yield(newTokenEOF())
+				yield(newEOFToken())
 
 				return
 			}
@@ -427,7 +468,7 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 			f, found := mainLexemeIndex.find(lexemePrefix(b))
 
 			if !found {
-				token = TokenUnexpectedChar(t.lineNum, b)
+				token = newUnexpectedCharToken(t.lineNum, b)
 			} else {
 				token = f(t)
 			}
