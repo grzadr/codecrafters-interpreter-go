@@ -32,6 +32,7 @@ const (
 	GREATER_EQUAL
 	SLASH
 	COMMENT
+	STRING
 )
 
 type (
@@ -61,6 +62,7 @@ var defaultLexemes = [...]lexeme{
 	">=",
 	"/",
 	"//",
+	"\"",
 }
 
 type Token struct {
@@ -68,16 +70,6 @@ type Token struct {
 	lexeme    lexeme
 	literal   string
 	err       error
-}
-
-func unexpectedCharToken(line int, b byte) Token {
-	return Token{
-		err: fmt.Errorf(
-			"[line %d] Error: Unexpected character: %s",
-			line,
-			string(b),
-		),
-	}
 }
 
 func newToken(ttype tokenType) Token {
@@ -88,8 +80,27 @@ func newToken(ttype tokenType) Token {
 	}
 }
 
-func eofToken() Token {
+func newTokenEOF() Token {
 	return newToken(EOF)
+}
+
+func TokenUnexpectedChar(line int, b byte) Token {
+	return Token{
+		err: fmt.Errorf(
+			"[line %d] Error: Unexpected character: %s",
+			line,
+			string(b),
+		),
+	}
+}
+
+func TokenUnterminatedString(line int) Token {
+	return Token{
+		err: fmt.Errorf(
+			"[line %d] Error: Unterminated string.",
+			line,
+		),
+	}
 }
 
 func (t Token) IsError() bool {
@@ -124,20 +135,24 @@ func scanIfNextIsEqual(ttype tokenType) scanFunc {
 	return scanIfNext(ttype, '=')
 }
 
-// func scanComment() scanFunc {
-// 	return func(t *Tokenizer) Token {
-// 		if next, ok := t.peek(); !ok || next != '/' {
-// 			return newToken(SLASH)
-// 		} else {
-// 			return
-
-// 		}
-// 	}
-// }
-
 func scanDefault(ttype tokenType) scanFunc {
 	return func(t *Tokenizer) Token {
 		return newToken(ttype)
+	}
+}
+
+func scanString() scanFunc {
+	return func(t *Tokenizer) Token {
+		content, found := t.restTo('"')
+		if !found {
+			return TokenUnterminatedString(t.lineNum)
+		}
+
+		return Token{
+			tokenType: STRING,
+			lexeme:    lexeme(fmt.Sprintf("%q", string(content))),
+			literal:   string(content),
+		}
 	}
 }
 
@@ -153,6 +168,7 @@ func newLexemeIndex() lexemeIndex {
 		'<': scanIfNextIsEqual(LESS),
 		'>': scanIfNextIsEqual(GREATER),
 		'/': scanIfNext(SLASH, '/'),
+		'"': scanString(),
 	}
 
 	for i, lexeme := range defaultLexemes[1:] {
@@ -248,14 +264,28 @@ func (t Tokenizer) rest() []byte {
 }
 
 func (t Tokenizer) index(b byte) int {
-	return slices.Index(t.rest(), b)
+	return t.offset + slices.Index(t.rest(), b)
+}
+
+func (t *Tokenizer) restTo(b byte) (data []byte, found bool) {
+	index := t.index(b)
+	if found = index == -1; !found {
+		t.skipLine()
+
+		return
+	}
+
+	data = t.data[t.offset:index]
+	t.offset = index + 1
+
+	return
 }
 
 func (t *Tokenizer) skipLine() {
 	if index := t.index('\n'); index == -1 {
 		t.offset = t.size()
 	} else {
-		t.offset += index
+		t.offset = index
 	}
 }
 
@@ -268,7 +298,7 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 			b, ok := t.read()
 
 			if !ok {
-				yield(eofToken())
+				yield(newTokenEOF())
 
 				return
 			}
@@ -285,7 +315,7 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 			f, found := mainLexemeIndex.find(lexemePrefix(b))
 
 			if !found {
-				token = unexpectedCharToken(t.lineNum, b)
+				token = TokenUnexpectedChar(t.lineNum, b)
 			} else {
 				token = f(t)
 			}
