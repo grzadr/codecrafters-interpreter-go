@@ -4,25 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"os"
+	"slices"
 )
-
-// type TokenType interface {
-// 	Name() string
-// 	Lexeme() string
-// }
-
-// type TokenType struct {
-// 	name   string
-// 	lexeme string
-// }
-
-// var LEFT_PAREN = TokenType{name: "LEFT_PAREN", lexeme: "("}
-
-// const (
-// 	LEFT_PAREN  = "("
-// 	RIGHT_PAREN = ")"
-// 	EOF         = ""
-// )
 
 //go:generate stringer -type=tokenType
 type tokenType int
@@ -41,6 +24,14 @@ const (
 	STAR
 	EQUAL
 	EQUAL_EQUAL
+	BANG
+	BANG_EQUAL
+	LESS
+	LESS_EQUAL
+	GREATER
+	GREATER_EQUAL
+	SLASH
+	COMMENT
 )
 
 type (
@@ -62,6 +53,14 @@ var defaultLexemes = [...]lexeme{
 	"*",
 	"=",
 	"==",
+	"!",
+	"!=",
+	"<",
+	"<=",
+	">",
+	">=",
+	"/",
+	"//",
 }
 
 type Token struct {
@@ -109,15 +108,32 @@ func (t Token) error() string {
 	return t.err.Error()
 }
 
-const asciiStandardSize = 128
+func scanIfNextIsEqual(ttype tokenType) scanFunc {
+	return func(t *Tokenizer) Token {
+		if next, ok := t.peek(); !ok || next != '=' {
+			return newToken(ttype)
+		} else {
+			t.skip()
 
-func scanEqualLexeme(t *Tokenizer) Token {
-	if next, ok := t.peek(); !ok || next != '=' {
-		return newToken(EQUAL)
-	} else {
-		t.skip()
+			return newToken(ttype + 1)
+		}
+	}
+}
 
-		return newToken(EQUAL_EQUAL)
+// func scanComment() scanFunc {
+// 	return func(t *Tokenizer) Token {
+// 		if next, ok := t.peek(); !ok || next != '/' {
+// 			return newToken(SLASH)
+// 		} else {
+// 			return
+
+// 		}
+// 	}
+// }
+
+func scanDefault(ttype tokenType) scanFunc {
+	return func(t *Tokenizer) Token {
+		return newToken(ttype)
 	}
 }
 
@@ -127,9 +143,13 @@ type (
 )
 
 func newLexemeIndex() lexemeIndex {
-	index := make(lexemeIndex, asciiStandardSize)
-
-	index['='] = scanEqualLexeme
+	index := lexemeIndex{
+		'=': scanIfNextIsEqual(EQUAL),
+		'!': scanIfNextIsEqual(BANG),
+		'<': scanIfNextIsEqual(LESS),
+		'>': scanIfNextIsEqual(GREATER),
+		'/': scanIfNextIsEqual(SLASH),
+	}
 
 	for i, lexeme := range defaultLexemes[1:] {
 		prefix := lexemePrefix(lexeme[0])
@@ -137,9 +157,7 @@ func newLexemeIndex() lexemeIndex {
 			continue
 		}
 
-		index[prefix] = func(t *Tokenizer) Token {
-			return newToken(tokenType(i + 1))
-		}
+		index[prefix] = scanDefault(tokenType(i + 1))
 	}
 
 	return index
@@ -217,6 +235,28 @@ func (t *Tokenizer) read() (b byte, ok bool) {
 	return
 }
 
+func (t Tokenizer) rest() []byte {
+	if !t.ok() {
+		return []byte{}
+	}
+
+	return t.data[t.offset:]
+}
+
+func (t Tokenizer) index(b byte) int {
+	return slices.Index(t.rest(), b)
+}
+
+func (t *Tokenizer) skipLine() {
+	index := t.index('\n')
+
+	if index == -1 {
+		t.offset = t.size()
+	} else {
+		t.offset = index + 1
+	}
+}
+
 func (t *Tokenizer) run() iter.Seq[Token] {
 	return func(yield func(Token) bool) {
 		var token Token
@@ -242,6 +282,12 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 				token = unexpectedCharToken(t.lineNum, b)
 			} else {
 				token = f(t)
+			}
+
+			if token.tokenType == COMMENT {
+				t.skipLine()
+
+				continue
 			}
 
 			if !yield(token) {
