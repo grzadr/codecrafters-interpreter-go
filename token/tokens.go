@@ -31,6 +31,8 @@ const (
 	EOF tokenType = iota
 	LEFT_PAREN
 	RIGHT_PAREN
+	LEFT_BRACE
+	RIGHT_BRACE
 )
 
 type (
@@ -42,6 +44,8 @@ var defaultLexemes = [...]lexeme{
 	"",
 	"(",
 	")",
+	"{",
+	"}",
 }
 
 type Token struct {
