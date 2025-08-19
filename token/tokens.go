@@ -332,7 +332,13 @@ func newLexemeIndex() lexemeIndex {
 			continue
 		}
 
-		index[prefix] = scanDefault(tokenType(i + 1))
+		ttype := tokenType(i + 1)
+
+		if ttype == AND {
+			break
+		}
+
+		index[prefix] = scanDefault(ttype)
 	}
 
 	return index
