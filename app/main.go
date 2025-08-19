@@ -25,10 +25,9 @@ func main() {
 	case "tokenize":
 		filename := os.Args[2]
 		for t := range token.Tokenize(filename) {
-
-
 			if t.IsError() {
 				code = 65
+
 				fmt.Fprintln(os.Stderr, t)
 			} else {
 				fmt.Println(t)

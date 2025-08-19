@@ -39,6 +39,8 @@ const (
 	PLUS
 	SEMICOLON
 	STAR
+	EQUAL
+	EQUAL_EQUAL
 )
 
 type (
@@ -58,6 +60,8 @@ var defaultLexemes = [...]lexeme{
 	"+",
 	";",
 	"*",
+	"=",
+	"==",
 }
 
 type Token struct {
@@ -65,10 +69,6 @@ type Token struct {
 	lexeme    lexeme
 	literal   string
 	err       error
-}
-
-func eofToken() Token {
-	return Token{tokenType: EOF, literal: "null"}
 }
 
 func unexpectedCharToken(line int, b byte) Token {
@@ -79,6 +79,18 @@ func unexpectedCharToken(line int, b byte) Token {
 			string(b),
 		),
 	}
+}
+
+func newToken(ttype tokenType) Token {
+	return Token{
+		tokenType: ttype,
+		lexeme:    defaultLexemes[int(ttype)],
+		literal:   "null",
+	}
+}
+
+func eofToken() Token {
+	return newToken(EOF)
 }
 
 func (t Token) IsError() bool {
@@ -97,6 +109,18 @@ func (t Token) error() string {
 	return t.err.Error()
 }
 
+const asciiStandardSize = 128
+
+func scanEqualLexeme(t *Tokenizer) Token {
+	if next, done := t.peek(); done || next != '=' {
+		return newToken(EQUAL)
+	} else {
+		t.skip()
+
+		return newToken(EQUAL_EQUAL)
+	}
+}
+
 type (
 	scanFunc    func(t *Tokenizer) Token
 	lexemeIndex map[lexemePrefix]scanFunc
@@ -105,9 +129,16 @@ type (
 func newLexemeIndex() lexemeIndex {
 	index := make(lexemeIndex, asciiStandardSize)
 
+	index['='] = scanEqualLexeme
+
 	for i, lexeme := range defaultLexemes[1:] {
-		index[lexemePrefix(lexeme[0])] = func(t *Tokenizer) Token {
-			return scanSimpleLexeme(i+1, t)
+		prefix := lexemePrefix(lexeme[0])
+		if _, found := index[prefix]; found {
+			continue
+		}
+
+		index[prefix] = func(t *Tokenizer) Token {
+			return newToken(tokenType(i + 1))
 		}
 	}
 
@@ -118,16 +149,6 @@ func (i lexemeIndex) find(l lexemePrefix) (f scanFunc, found bool) {
 	f, found = i[l]
 
 	return
-}
-
-const asciiStandardSize = 128
-
-func scanSimpleLexeme(ttype int, t *Tokenizer) Token {
-	return Token{
-		tokenType: tokenType(ttype),
-		lexeme:    defaultLexemes[ttype],
-		literal:   "null",
-	}
 }
 
 var mainLexemeIndex = newLexemeIndex()
@@ -158,30 +179,40 @@ func newTokenizer(filename string) (t Tokenizer, err error) {
 	return
 }
 
-func (t *Tokenizer) size() int {
+func (t Tokenizer) size() int {
 	return len(t.data)
 }
 
-func (t *Tokenizer) left() int {
+func (t Tokenizer) last() int {
+	return t.size() - 1
+}
+
+func (t Tokenizer) left() int {
 	return t.size() - t.offset
 }
 
-func (t *Tokenizer) done() bool {
-	return t.left() == 0
+func (t Tokenizer) ok() bool {
+	return t.left() > 0
 }
 
-func (t Tokenizer) peek() byte {
-	return t.data[t.offset]
+func (t Tokenizer) current() byte {
+	return t.data[min(t.offset, t.last())]
+}
+
+func (t Tokenizer) peek() (next byte, ok bool) {
+	return t.current(), t.ok()
+}
+
+func (t *Tokenizer) skip() {
+	t.offset++
 }
 
 func (t *Tokenizer) read() (b byte, ok bool) {
-	if t.done() {
+	if b, ok = t.peek(); !ok {
 		return
 	}
 
-	b = t.data[t.offset]
-	ok = true
-	t.offset++
+	t.skip()
 
 	return
 }
