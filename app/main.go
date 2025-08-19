@@ -19,14 +19,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	code := 0
+
 	switch command := os.Args[1]; command {
 	case "tokenize":
 		filename := os.Args[2]
 		for t := range token.Tokenize(filename) {
+			log.Println("got token", t)
 			fmt.Println(t)
+
+			if t.IsError() {
+				code = 65
+			}
 		}
 	default:
 		log.Fatalf("Unknown command: %s\n", command)
 	}
-	// Uncomment this block to pass the first stage
+
+	log.Println("exiting")
+
+	os.Exit(code)
 }

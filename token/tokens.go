@@ -3,6 +3,7 @@ package token
 import (
 	"fmt"
 	"iter"
+	"log"
 	"os"
 )
 
@@ -64,10 +65,37 @@ type Token struct {
 	tokenType tokenType
 	lexeme    lexeme
 	literal   string
+	err       error
+}
+
+func eofToken() Token {
+	return Token{tokenType: EOF, literal: "null"}
+}
+
+func unexpectedCharToken(line int, b byte) Token {
+	return Token{
+		err: fmt.Errorf(
+			"[line %d] Error: Unexpected character: %s",
+			line,
+			string(b),
+		),
+	}
+}
+
+func (t Token) IsError() bool {
+	return t.err != nil
 }
 
 func (t Token) String() string {
+	if t.IsError() {
+		return t.error()
+	}
+
 	return fmt.Sprintf("%s %s %s", t.tokenType, t.lexeme, t.literal)
+}
+
+func (t Token) error() string {
+	return t.err.Error()
 }
 
 type (
@@ -87,8 +115,10 @@ func newLexemeIndex() lexemeIndex {
 	return index
 }
 
-func (i lexemeIndex) find(l lexemePrefix) scanFunc {
-	return i[l]
+func (i lexemeIndex) find(l lexemePrefix) (f scanFunc, found bool) {
+	f, found = i[l]
+
+	return
 }
 
 const asciiStandardSize = 128
@@ -117,12 +147,14 @@ func readFileContent(filename string) (content []byte, err error) {
 }
 
 type Tokenizer struct {
-	data   []byte
-	offset int
+	data    []byte
+	offset  int
+	lineNum int
 }
 
 func newTokenizer(filename string) (t Tokenizer, err error) {
 	t.data, err = readFileContent(filename)
+	t.lineNum = 1
 
 	return
 }
@@ -155,22 +187,36 @@ func (t *Tokenizer) read() (b byte, ok bool) {
 	return
 }
 
-var tokenEOF = Token{tokenType: EOF, literal: "null"}
-
 func (t *Tokenizer) run() iter.Seq[Token] {
 	return func(yield func(Token) bool) {
+		var token Token
+
 		for {
 			b, ok := t.read()
 
 			if !ok {
-				yield(tokenEOF)
+				yield(eofToken())
 
 				return
 			}
 
-			f := mainLexemeIndex.find(lexemePrefix(b))
+			if b == '\n' {
+				t.lineNum++
 
-			if !yield(f(t)) {
+				continue
+			}
+
+			f, found := mainLexemeIndex.find(lexemePrefix(b))
+
+			log.Println(found, b)
+
+			if !found {
+				token = unexpectedCharToken(t.lineNum, b)
+			} else {
+				token = f(t)
+			}
+
+			if !yield(token) {
 				return
 			}
 		}
@@ -178,21 +224,10 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 }
 
 func Tokenize(filename string) iter.Seq[Token] {
-	// return func(yield func(Token) bool) {
 	tokenizer, err := newTokenizer(filename)
 	if err != nil {
 		panic(err)
 	}
 
 	return tokenizer.run()
-	//	if len(fileContent) > 0 {
-	//		panic("Scanner not implemented")
-	//	} else {
-	//
-	//	fmt.Println("EOF  null") // Placeholder, replace this line when
-	//
-	// implementing the scanner
-	// }
 }
-
-// }
