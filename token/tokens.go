@@ -252,12 +252,10 @@ func (t Tokenizer) index(b byte) int {
 }
 
 func (t *Tokenizer) skipLine() {
-	index := t.index('\n')
-
-	if index == -1 {
+	if index := t.index('\n'); index == -1 {
 		t.offset = t.size()
 	} else {
-		t.offset = index + 1
+		t.offset += index
 	}
 }
 
@@ -295,7 +293,7 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 			if token.tokenType == COMMENT {
 				t.skipLine()
 
-				continue
+				continue loop
 			}
 
 			if !yield(token) {
