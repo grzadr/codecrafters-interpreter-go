@@ -25,7 +25,6 @@ func main() {
 	case "tokenize":
 		filename := os.Args[2]
 		for t := range token.Tokenize(filename) {
-			log.Println("got token", t)
 			fmt.Println(t)
 
 			if t.IsError() {
@@ -35,8 +34,6 @@ func main() {
 	default:
 		log.Fatalf("Unknown command: %s\n", command)
 	}
-
-	log.Println("exiting")
 
 	os.Exit(code)
 }
