@@ -3,7 +3,6 @@ package token
 import (
 	"fmt"
 	"iter"
-	"log"
 	"os"
 )
 
@@ -207,8 +206,6 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 			}
 
 			f, found := mainLexemeIndex.find(lexemePrefix(b))
-
-			log.Println(found, b)
 
 			if !found {
 				token = unexpectedCharToken(t.lineNum, b)
