@@ -145,12 +145,14 @@ func scanString() scanFunc {
 	return func(t *Tokenizer) Token {
 		content, found := t.restTo('"')
 		if !found {
+			t.skipLine()
+
 			return TokenUnterminatedString(t.lineNum)
 		}
 
 		return Token{
 			tokenType: STRING,
-			lexeme:    lexeme(fmt.Sprintf("%q", string(content))),
+			lexeme:    lexeme(fmt.Sprintf("\"%s\"", string(content))),
 			literal:   string(content),
 		}
 	}
@@ -264,19 +266,17 @@ func (t Tokenizer) rest() []byte {
 }
 
 func (t Tokenizer) index(b byte) int {
-	return t.offset + slices.Index(t.rest(), b)
+	return slices.Index(t.rest(), b)
 }
 
 func (t *Tokenizer) restTo(b byte) (data []byte, found bool) {
 	index := t.index(b)
-	if found = index == -1; !found {
-		t.skipLine()
-
+	if found = index > -1; !found {
 		return
 	}
 
-	data = t.data[t.offset:index]
-	t.offset = index + 1
+	data = t.data[t.offset : t.offset+index]
+	t.offset += index + 1
 
 	return
 }
@@ -285,7 +285,7 @@ func (t *Tokenizer) skipLine() {
 	if index := t.index('\n'); index == -1 {
 		t.offset = t.size()
 	} else {
-		t.offset = index
+		t.offset += index
 	}
 }
 
@@ -293,14 +293,21 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 	return func(yield func(Token) bool) {
 		var token Token
 
+		iterations := 0
+
 	loop:
 		for {
 			b, ok := t.read()
 
+			iterations++
 			if !ok {
 				yield(newTokenEOF())
 
 				return
+			}
+
+			if iterations > t.size() {
+				panic(fmt.Sprintf("content %q entered infinite loop", string(t.data)))
 			}
 
 			switch b {
