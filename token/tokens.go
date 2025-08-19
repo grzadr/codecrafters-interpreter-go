@@ -60,6 +60,7 @@ var defaultLexemes = [...]lexeme{
 	">",
 	">=",
 	"/",
+	"//",
 }
 
 type Token struct {
@@ -107,9 +108,9 @@ func (t Token) error() string {
 	return t.err.Error()
 }
 
-func scanIfNextIsEqual(ttype tokenType) scanFunc {
+func scanIfNext(ttype tokenType, expected byte) scanFunc {
 	return func(t *Tokenizer) Token {
-		if next, ok := t.peek(); !ok || next != '=' {
+		if next, ok := t.peek(); !ok || next != expected {
 			return newToken(ttype)
 		} else {
 			t.skip()
@@ -117,6 +118,10 @@ func scanIfNextIsEqual(ttype tokenType) scanFunc {
 			return newToken(ttype + 1)
 		}
 	}
+}
+
+func scanIfNextIsEqual(ttype tokenType) scanFunc {
+	return scanIfNext(ttype, '=')
 }
 
 // func scanComment() scanFunc {
@@ -147,7 +152,7 @@ func newLexemeIndex() lexemeIndex {
 		'!': scanIfNextIsEqual(BANG),
 		'<': scanIfNextIsEqual(LESS),
 		'>': scanIfNextIsEqual(GREATER),
-		'/': scanIfNextIsEqual(SLASH),
+		'/': scanIfNext(SLASH, '/'),
 	}
 
 	for i, lexeme := range defaultLexemes[1:] {
