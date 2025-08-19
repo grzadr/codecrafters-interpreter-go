@@ -3,8 +3,11 @@ package token
 import (
 	"fmt"
 	"iter"
+	"log"
 	"os"
 	"slices"
+	"strconv"
+	"unicode"
 )
 
 //go:generate stringer -type=tokenType
@@ -33,6 +36,24 @@ const (
 	SLASH
 	COMMENT
 	STRING
+	AND
+	CLASS
+	ELSE
+	FALSE
+	FOR
+	FUN
+	IF
+	NIL
+	OR
+	PRINT
+	RETURN
+	SUPER
+	THIS
+	TRUE
+	VAR
+	WHILE
+	NUMBER
+	IDENTIFIER
 )
 
 type (
@@ -63,20 +84,67 @@ var defaultLexemes = [...]lexeme{
 	"/",
 	"//",
 	"\"",
+	"and",
+	"class",
+	"else",
+	"false",
+	"for",
+	"fun",
+	"if",
+	"nil",
+	"or",
+	"print",
+	"return",
+	"super",
+	"this",
+	"true",
+	"var",
+	"while",
+}
+
+type Literal interface {
+	String() string
+	isLiteral()
 }
 
 type Token struct {
 	tokenType tokenType
 	lexeme    lexeme
-	literal   string
+	literal   Literal
 	err       error
 }
+
+type StringLiteral string
+
+func (l StringLiteral) String() string {
+	return string(l)
+}
+
+func (l StringLiteral) isLiteral() {}
+
+type NumberLiteral float64
+
+func newNumberLiteral(num string) NumberLiteral {
+	literal, _ := strconv.ParseFloat(num, 64)
+
+	return NumberLiteral(literal)
+}
+
+func (l NumberLiteral) String() string {
+	if l == NumberLiteral(int64(l)) {
+		return fmt.Sprintf("%g.0", l)
+	} else {
+		return fmt.Sprintf("%g", l)
+	}
+}
+
+func (l NumberLiteral) isLiteral() {}
 
 func newToken(ttype tokenType) Token {
 	return Token{
 		tokenType: ttype,
 		lexeme:    defaultLexemes[int(ttype)],
-		literal:   "null",
+		literal:   StringLiteral("null"),
 	}
 }
 
@@ -153,7 +221,40 @@ func scanString() scanFunc {
 		return Token{
 			tokenType: STRING,
 			lexeme:    lexeme(fmt.Sprintf("\"%s\"", string(content))),
-			literal:   string(content),
+			literal:   StringLiteral(content),
+		}
+	}
+}
+
+func scanNumber(b byte) scanFunc {
+	return func(t *Tokenizer) Token {
+		data := []byte{b}
+
+		for {
+			next, ok := t.peek()
+			if !ok || (!unicode.IsDigit(rune(next)) && next != '.') {
+				log.Println(
+					"break",
+					t.left(),
+					string(data),
+					string(next),
+					!ok,
+					!unicode.IsDigit(rune(next)),
+					next != '.',
+				)
+
+				break
+			}
+
+			t.skip()
+
+			data = append(data, next)
+		}
+
+		return Token{
+			tokenType: NUMBER,
+			lexeme:    lexeme(data),
+			literal:   newNumberLiteral(string(data)),
 		}
 	}
 }
@@ -186,6 +287,10 @@ func newLexemeIndex() lexemeIndex {
 }
 
 func (i lexemeIndex) find(l lexemePrefix) (f scanFunc, found bool) {
+	if unicode.IsDigit(rune(l)) {
+		return scanNumber(byte(l)), true
+	}
+
 	f, found = i[l]
 
 	return
