@@ -289,23 +289,14 @@ func scanIdentifier(b byte) scanFunc {
 
 		ttype, found := reservedLexemeIndex[lexeme]
 
-		if !found {
-			return Token{
-				tokenType: IDENTIFIER,
-				lexeme:    lexeme,
-				literal:   StringLiteral("null"),
-			}
+		if found {
+			return newToken(ttype)
 		}
 
-		switch ttype {
-		case TRUE, FALSE:
-			return Token{
-				tokenType: ttype,
-				lexeme:    lexeme,
-				literal:   newBoolLiteral(ttype),
-			}
-		default:
-			return newToken(ttype)
+		return Token{
+			tokenType: IDENTIFIER,
+			lexeme:    lexeme,
+			literal:   StringLiteral("null"),
 		}
 	}
 }
