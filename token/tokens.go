@@ -60,7 +60,6 @@ var defaultLexemes = [...]lexeme{
 	">",
 	">=",
 	"/",
-	"//",
 }
 
 type Token struct {
@@ -261,6 +260,7 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 	return func(yield func(Token) bool) {
 		var token Token
 
+	loop:
 		for {
 			b, ok := t.read()
 
@@ -270,10 +270,13 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 				return
 			}
 
-			if b == '\n' {
+			switch b {
+			case '\n':
 				t.lineNum++
 
-				continue
+				fallthrough
+			case '\t', ' ':
+				continue loop
 			}
 
 			f, found := mainLexemeIndex.find(lexemePrefix(b))
