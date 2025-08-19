@@ -33,6 +33,10 @@ const (
 	RIGHT_PAREN
 	LEFT_BRACE
 	RIGHT_BRACE
+	STAR
+	DOT
+	COMMA
+	PLUS
 )
 
 type (
@@ -46,6 +50,10 @@ var defaultLexemes = [...]lexeme{
 	")",
 	"{",
 	"}",
+	"*",
+	".",
+	",",
+	"+",
 }
 
 type Token struct {
