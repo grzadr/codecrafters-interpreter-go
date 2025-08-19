@@ -112,7 +112,7 @@ func (t Token) error() string {
 const asciiStandardSize = 128
 
 func scanEqualLexeme(t *Tokenizer) Token {
-	if next, done := t.peek(); done || next != '=' {
+	if next, ok := t.peek(); !ok || next != '=' {
 		return newToken(EQUAL)
 	} else {
 		t.skip()
@@ -183,10 +183,6 @@ func (t Tokenizer) size() int {
 	return len(t.data)
 }
 
-func (t Tokenizer) last() int {
-	return t.size() - 1
-}
-
 func (t Tokenizer) left() int {
 	return t.size() - t.offset
 }
@@ -196,11 +192,15 @@ func (t Tokenizer) ok() bool {
 }
 
 func (t Tokenizer) current() byte {
-	return t.data[min(t.offset, t.last())]
+	return t.data[t.offset]
 }
 
 func (t Tokenizer) peek() (next byte, ok bool) {
-	return t.current(), t.ok()
+	if ok = t.ok(); ok {
+		next = t.current()
+	}
+
+	return
 }
 
 func (t *Tokenizer) skip() {
