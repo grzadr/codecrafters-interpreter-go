@@ -106,13 +106,6 @@ type Literal interface {
 	isLiteral()
 }
 
-type Token struct {
-	tokenType tokenType
-	lexeme    lexeme
-	literal   Literal
-	err       error
-}
-
 type StringLiteral string
 
 func (l StringLiteral) String() string {
@@ -138,6 +131,29 @@ func (l NumberLiteral) String() string {
 }
 
 func (l NumberLiteral) isLiteral() {}
+
+type BoolLiteral bool
+
+func newBoolLiteral(ttype tokenType) BoolLiteral {
+	if ttype == TRUE {
+		return BoolLiteral(true)
+	}
+
+	return BoolLiteral(false)
+}
+
+func (l BoolLiteral) String() string {
+	return fmt.Sprintf("%t", l)
+}
+
+func (l BoolLiteral) isLiteral() {}
+
+type Token struct {
+	tokenType tokenType
+	lexeme    lexeme
+	literal   Literal
+	err       error
+}
 
 func newToken(ttype tokenType) Token {
 	return Token{
@@ -271,7 +287,7 @@ func scanIdentifier(b byte) scanFunc {
 
 		lexeme := lexeme(data)
 
-		reserved, found := reservedLexemeIndex[lexeme]
+		ttype, found := reservedLexemeIndex[lexeme]
 
 		if !found {
 			return Token{
@@ -279,6 +295,17 @@ func scanIdentifier(b byte) scanFunc {
 				lexeme:    lexeme,
 				literal:   StringLiteral("null"),
 			}
+		}
+
+		switch ttype {
+		case TRUE, FALSE:
+			return Token{
+				tokenType: ttype,
+				lexeme:    lexeme,
+				literal:   newBoolLiteral(ttype),
+			}
+		default:
+			return newToken(ttype)
 		}
 	}
 }
