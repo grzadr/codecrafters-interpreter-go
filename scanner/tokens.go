@@ -239,6 +239,10 @@ func (t Token) Value() ValueLiteral {
 	return t.literal
 }
 
+func (t Token) Raw() string {
+	return string(t.lexeme)
+}
+
 func (t Token) error() string {
 	return t.err.Error()
 }
@@ -471,6 +475,10 @@ func (t *Tokenizer) Run() iter.Seq[Token] {
 			}
 		}
 	}
+}
+
+func (t Tokenizer) Line() int {
+	return t.lineNum
 }
 
 func (t Tokenizer) size() int {

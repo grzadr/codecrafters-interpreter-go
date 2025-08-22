@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"iter"
+	"log"
 
 	"github.com/codecrafters-io/interpreter-starter-go/scanner"
 )
@@ -18,10 +19,9 @@ type expression interface {
 type expressionType int
 
 const (
-	ExprLiteral expressionType = iota
+	expressionTypeLiteral  expressionType = iota
+	expressionTypeGrouping expressionType = iota
 )
-
-type expressionCreator func(scanner.Token, pullNextToken) (expression, bool)
 
 type literal struct {
 	value scanner.ValueLiteral
@@ -30,15 +30,8 @@ type literal struct {
 func newLiteral(
 	token scanner.Token,
 	_ pullNextToken,
-) (literal, bool) {
-	return literal{value: token.Value()}, true
-}
-
-func newLiteralCreator(
-	token scanner.Token,
-	next pullNextToken,
-) (expression, bool) {
-	return newLiteral(token, next)
+) literal {
+	return literal{value: token.Value()}
 }
 
 func (l literal) String() string {
@@ -50,23 +43,57 @@ func (l literal) consume(next pullNextToken) bool {
 	return true
 }
 
-var expressionCreators = map[scanner.TokenType]expressionCreator{
-	scanner.TRUE:   newLiteralCreator,
-	scanner.FALSE:  newLiteralCreator,
-	scanner.NIL:    newLiteralCreator,
-	scanner.NUMBER: newLiteralCreator,
-	scanner.STRING: newLiteralCreator,
+type grouping struct {
+	expr expression
+	err  error
 }
 
-func newExpression(next pullNextToken) (expr expression, ok bool) {
-	token, ok := next()
-	ok = ok && token.Type() != scanner.EOF
+func newGroping(
+	token scanner.Token,
+	next pullNextToken,
+) (expr grouping) {
+	if expr.expr = newExpression(next); expr.expr == nil {
+		expr.err = fmt.Errorf("Expected expression")
 
-	if !ok {
 		return
 	}
 
-	creator, found := expressionCreators[token.Type()]
+	if expr.err = expr.expr.Err(); expr.Err() != nil {
+		return
+	}
+
+	if closing, _ := next(); closing.Type() != scanner.RIGHT_BRACE {
+		expr.err = fmt.Errorf("Error at '%s': Expected ')'", closing.Raw())
+	}
+
+	return
+}
+
+func (l grouping) String() string {
+	return fmt.Sprintf("(group %s)", l.expr)
+}
+func (l grouping) Err() error { return nil }
+
+func (l grouping) consume(next pullNextToken) bool {
+	return true
+}
+
+var expressionCreators = map[scanner.TokenType]expressionType{
+	scanner.TRUE:       expressionTypeLiteral,
+	scanner.FALSE:      expressionTypeLiteral,
+	scanner.NIL:        expressionTypeLiteral,
+	scanner.NUMBER:     expressionTypeLiteral,
+	scanner.STRING:     expressionTypeLiteral,
+	scanner.LEFT_PAREN: expressionTypeGrouping,
+}
+
+func newExpression(next pullNextToken) expression {
+	token, _ := next()
+	if token.Type() == scanner.EOF {
+		return nil
+	}
+
+	exprType, found := expressionCreators[token.Type()]
 
 	if !found {
 		panic(
@@ -77,7 +104,14 @@ func newExpression(next pullNextToken) (expr expression, ok bool) {
 		)
 	}
 
-	return creator(token, next)
+	switch exprType {
+	case expressionTypeLiteral:
+		return newLiteral(token, next)
+	case expressionTypeGrouping:
+		return newGroping(token, next)
+	default:
+		panic(fmt.Errorf("unsupported expression type %+v", exprType))
+	}
 }
 
 const errCodeParsing = 65
@@ -92,18 +126,16 @@ func CmdParse(filename string) (code int, err error) {
 	defer stop()
 
 	for {
-		expr, ok := newExpression(next)
-
-		if !ok {
-			break
-		}
+		expr := newExpression(next)
 
 		if expr == nil {
-			panic("null expression")
+			break
 		}
 
 		if err = expr.Err(); err != nil {
 			code = errCodeParsing
+
+			log.Printf("[line %d] %w", tokenizer.Line(), err)
 
 			break
 		}
