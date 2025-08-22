@@ -22,14 +22,8 @@ const (
 	expressionTypeLiteral expressionType = iota
 	expressionTypeGrouping
 	expressionTypeUnary
+	expressionTypeBinary
 )
-
-type base struct {
-	expr expression
-	err  error
-}
-
-func (b base) Err() error { return b.err }
 
 type literal struct {
 	value scanner.ValueLiteral
@@ -42,13 +36,14 @@ func newLiteral(
 	return literal{value: token.Value()}
 }
 
-func (l literal) String() string {
-	return l.value.FmtValue()
+func (e literal) String() string {
+	return e.value.FmtValue()
 }
-func (l literal) Err() error { return nil }
+func (e literal) Err() error { return nil }
 
 type grouping struct {
-	base
+	expr expression
+	err  error
 }
 
 func newGroping(
@@ -76,14 +71,16 @@ func newGroping(
 	return
 }
 
-func (l grouping) String() string {
-	return fmt.Sprintf("(group %s)", l.expr)
+func (e grouping) String() string {
+	return fmt.Sprintf("(group %s)", e.expr)
 }
 
-type unary struct {
-	base
+func (e grouping) Err() error { return e.err }
 
-	opr scanner.TokenType
+type unary struct {
+	opr  scanner.TokenType
+	expr expression
+	err  error
 }
 
 func newUnary(
@@ -102,10 +99,39 @@ func newUnary(
 	return
 }
 
-func (l unary) String() string {
-	return fmt.Sprintf("(%s %s)", l.opr.Raw(), l.expr)
+func (e unary) String() string {
+	return fmt.Sprintf("(%s %s)", e.opr.Raw(), e.expr)
 }
-func (l unary) Err() error { return nil }
+
+func (e unary) Err() error { return e.err }
+
+type binary struct {
+	opr   scanner.TokenType
+	left  expression
+	right expression
+	err   error
+}
+
+func newBinary(
+	token scanner.Token,
+	next pullNextToken,
+) (expr unary) {
+	expr.opr = token.Type()
+	if expr.expr = newExpression(next); expr.expr == nil {
+		return
+	}
+
+	if expr.err = expr.expr.Err(); expr.Err() != nil {
+		return
+	}
+
+	return
+}
+
+func (e binary) String() string {
+	return fmt.Sprintf("(%s %s %s)", e.opr.Raw(), e.left, e.right)
+}
+func (e binary) Err() error { return nil }
 
 var expressionCreators = map[scanner.TokenType]expressionType{
 	scanner.TRUE:       expressionTypeLiteral,
@@ -134,8 +160,6 @@ func newExpression(next pullNextToken) expression {
 			),
 		)
 	}
-
-	log.Printf("token: %+v", token)
 
 	switch exprType {
 	case expressionTypeLiteral:
