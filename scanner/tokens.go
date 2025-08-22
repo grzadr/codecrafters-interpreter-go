@@ -55,6 +55,10 @@ const (
 	IDENTIFIER
 )
 
+func (t TokenType) Raw() string {
+	return string(defaultLexemes[int(t)])
+}
+
 type (
 	lexemePrefix byte
 	lexeme       string
@@ -174,7 +178,7 @@ type Token struct {
 
 func newToken(ttype TokenType) (token Token) {
 	token.tokenType = ttype
-	token.lexeme = defaultLexemes[int(ttype)]
+	token.lexeme = lexeme(ttype.Raw())
 
 	switch token.tokenType {
 	case TRUE:
