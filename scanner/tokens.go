@@ -1,4 +1,4 @@
-package token
+package scanner
 
 import (
 	"fmt"
@@ -510,11 +510,21 @@ func (t *Tokenizer) run() iter.Seq[Token] {
 	}
 }
 
-func Tokenize(filename string) iter.Seq[Token] {
+func CmdTokenize(filename string) (code int, err error) {
 	tokenizer, err := newTokenizer(filename)
 	if err != nil {
-		panic(err)
+		return
 	}
 
-	return tokenizer.run()
+	for t := range tokenizer.run() {
+		if t.IsError() {
+			code = 65
+
+			fmt.Fprintln(os.Stderr, t)
+		} else {
+			fmt.Println(t)
+		}
+	}
+
+	return
 }
