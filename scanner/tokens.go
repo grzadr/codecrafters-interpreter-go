@@ -10,10 +10,10 @@ import (
 )
 
 //go:generate stringer -type=tokenType
-type tokenType int
+type TokenType int
 
 const (
-	EOF tokenType = iota
+	EOF TokenType = iota
 	LEFT_PAREN
 	RIGHT_PAREN
 	LEFT_BRACE
@@ -101,15 +101,32 @@ var defaultLexemes = [...]lexeme{
 	"while",
 }
 
-type Literal interface {
+type ValueLiteral interface {
 	String() string
+	FmtValue() string
 	isLiteral()
 }
 
+type NullLiteral struct{}
+
+func (l NullLiteral) FmtValue() string {
+	return "nil"
+}
+
+func (l NullLiteral) String() string {
+	return "null"
+}
+
+func (l NullLiteral) isLiteral() {}
+
 type StringLiteral string
 
-func (l StringLiteral) String() string {
+func (l StringLiteral) FmtValue() string {
 	return string(l)
+}
+
+func (l StringLiteral) String() string {
+	return l.FmtValue()
 }
 
 func (l StringLiteral) isLiteral() {}
@@ -122,7 +139,7 @@ func newNumberLiteral(num string) NumberLiteral {
 	return NumberLiteral(literal)
 }
 
-func (l NumberLiteral) String() string {
+func (l NumberLiteral) FmtValue() string {
 	if l == NumberLiteral(int64(l)) {
 		return fmt.Sprintf("%g.0", l)
 	} else {
@@ -130,37 +147,45 @@ func (l NumberLiteral) String() string {
 	}
 }
 
+func (l NumberLiteral) String() string {
+	return l.FmtValue()
+}
+
 func (l NumberLiteral) isLiteral() {}
 
 type BoolLiteral bool
 
-func newBoolLiteral(ttype tokenType) BoolLiteral {
-	if ttype == TRUE {
-		return BoolLiteral(true)
-	}
-
-	return BoolLiteral(false)
+func (l BoolLiteral) FmtValue() string {
+	return fmt.Sprintf("%t", l)
 }
 
 func (l BoolLiteral) String() string {
-	return fmt.Sprintf("%t", l)
+	return "null"
 }
 
 func (l BoolLiteral) isLiteral() {}
 
 type Token struct {
-	tokenType tokenType
+	tokenType TokenType
 	lexeme    lexeme
-	literal   Literal
+	literal   ValueLiteral
 	err       error
 }
 
-func newToken(ttype tokenType) Token {
-	return Token{
-		tokenType: ttype,
-		lexeme:    defaultLexemes[int(ttype)],
-		literal:   StringLiteral("null"),
+func newToken(ttype TokenType) (token Token) {
+	token.tokenType = ttype
+	token.lexeme = defaultLexemes[int(ttype)]
+
+	switch token.tokenType {
+	case TRUE:
+		token.literal = BoolLiteral(true)
+	case FALSE:
+		token.literal = BoolLiteral(false)
+	default:
+		token.literal = NullLiteral{}
 	}
+
+	return
 }
 
 func newEOFToken() Token {
@@ -206,11 +231,19 @@ func (t Token) String() string {
 	return fmt.Sprintf("%s %s %s", t.tokenType, t.lexeme, t.literal)
 }
 
+func (t Token) Type() TokenType {
+	return t.tokenType
+}
+
+func (t Token) Value() ValueLiteral {
+	return t.literal
+}
+
 func (t Token) error() string {
 	return t.err.Error()
 }
 
-func scanIfNext(ttype tokenType, expected byte) scanFunc {
+func scanIfNext(ttype TokenType, expected byte) scanFunc {
 	return func(t *Tokenizer) Token {
 		if next, ok := t.peek(); !ok || next != expected {
 			return newToken(ttype)
@@ -222,11 +255,11 @@ func scanIfNext(ttype tokenType, expected byte) scanFunc {
 	}
 }
 
-func scanIfNextIsEqual(ttype tokenType) scanFunc {
+func scanIfNextIsEqual(ttype TokenType) scanFunc {
 	return scanIfNext(ttype, '=')
 }
 
-func scanDefault(ttype tokenType) scanFunc {
+func scanDefault(ttype TokenType) scanFunc {
 	return func(t *Tokenizer) Token {
 		return newToken(ttype)
 	}
@@ -304,7 +337,7 @@ func scanIdentifier(b byte) scanFunc {
 type (
 	scanFunc      func(t *Tokenizer) Token
 	lexemeIndex   map[lexemePrefix]scanFunc
-	reservedIndex map[lexeme]tokenType
+	reservedIndex map[lexeme]TokenType
 )
 
 func newLexemeIndex() lexemeIndex {
@@ -323,7 +356,7 @@ func newLexemeIndex() lexemeIndex {
 			continue
 		}
 
-		ttype := tokenType(i + 1)
+		ttype := TokenType(i + 1)
 
 		if ttype == AND {
 			break
@@ -355,7 +388,7 @@ func newReservedLexemeIndex() reservedIndex {
 	index := make(reservedIndex, len(defaultLexemes)-int(AND))
 
 	for i, lexeme := range defaultLexemes[AND:] {
-		index[lexeme] = tokenType(i + int(AND))
+		index[lexeme] = TokenType(i + int(AND))
 	}
 
 	return index
@@ -382,11 +415,62 @@ type Tokenizer struct {
 	lineNum int
 }
 
-func newTokenizer(filename string) (t Tokenizer, err error) {
+func NewTokenizer(filename string) (t Tokenizer, err error) {
 	t.data, err = readFileContent(filename)
 	t.lineNum = 1
 
 	return
+}
+
+func (t *Tokenizer) Run() iter.Seq[Token] {
+	return func(yield func(Token) bool) {
+		var token Token
+
+		iterations := 0
+
+	loop:
+		for {
+			b, ok := t.read()
+
+			iterations++
+			if !ok {
+				yield(newEOFToken())
+
+				return
+			}
+
+			if iterations > t.size() {
+				panic(fmt.Sprintf("content %q entered infinite loop", string(t.data)))
+			}
+
+			switch b {
+			case '\n':
+				t.lineNum++
+
+				fallthrough
+			case '\t', ' ':
+				continue loop
+			}
+
+			f, found := mainLexemeIndex.find(lexemePrefix(b))
+
+			if !found {
+				token = newUnexpectedCharToken(t.lineNum, b)
+			} else {
+				token = f(t)
+			}
+
+			if token.tokenType == COMMENT {
+				t.skipLine()
+
+				continue loop
+			}
+
+			if !yield(token) {
+				return
+			}
+		}
+	}
 }
 
 func (t Tokenizer) size() int {
@@ -459,66 +543,17 @@ func (t *Tokenizer) skipLine() {
 	}
 }
 
-func (t *Tokenizer) run() iter.Seq[Token] {
-	return func(yield func(Token) bool) {
-		var token Token
-
-		iterations := 0
-
-	loop:
-		for {
-			b, ok := t.read()
-
-			iterations++
-			if !ok {
-				yield(newEOFToken())
-
-				return
-			}
-
-			if iterations > t.size() {
-				panic(fmt.Sprintf("content %q entered infinite loop", string(t.data)))
-			}
-
-			switch b {
-			case '\n':
-				t.lineNum++
-
-				fallthrough
-			case '\t', ' ':
-				continue loop
-			}
-
-			f, found := mainLexemeIndex.find(lexemePrefix(b))
-
-			if !found {
-				token = newUnexpectedCharToken(t.lineNum, b)
-			} else {
-				token = f(t)
-			}
-
-			if token.tokenType == COMMENT {
-				t.skipLine()
-
-				continue loop
-			}
-
-			if !yield(token) {
-				return
-			}
-		}
-	}
-}
+const errCodeScanning = 65
 
 func CmdTokenize(filename string) (code int, err error) {
-	tokenizer, err := newTokenizer(filename)
+	tokenizer, err := NewTokenizer(filename)
 	if err != nil {
 		return
 	}
 
-	for t := range tokenizer.run() {
+	for t := range tokenizer.Run() {
 		if t.IsError() {
-			code = 65
+			code = errCodeScanning
 
 			fmt.Fprintln(os.Stderr, t)
 		} else {

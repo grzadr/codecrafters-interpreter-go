@@ -54,8 +54,8 @@ const _tokenType_name = "EOFLEFT_PARENRIGHT_PARENLEFT_BRACERIGHT_BRACECOMMADOTMI
 
 var _tokenType_index = [...]uint8{0, 3, 13, 24, 34, 45, 50, 53, 58, 62, 71, 75, 80, 91, 95, 105, 109, 119, 126, 139, 144, 151, 157, 160, 165, 169, 174, 177, 180, 182, 185, 187, 192, 198, 203, 207, 211, 214, 219, 225, 235}
 
-func (i tokenType) String() string {
-	if i < 0 || i >= tokenType(len(_tokenType_index)-1) {
+func (i TokenType) String() string {
+	if i < 0 || i >= TokenType(len(_tokenType_index)-1) {
 		return "tokenType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
 	return _tokenType_name[_tokenType_index[i]:_tokenType_index[i+1]]

@@ -4,28 +4,39 @@ import (
 	"log"
 	"os"
 
+	"github.com/codecrafters-io/interpreter-starter-go/parser"
 	"github.com/codecrafters-io/interpreter-starter-go/scanner"
 )
 
-const defaultArgsNum = 3
+const (
+	argNumCommand  = 1
+	argNumFilename = 2
+	argNum         = 3
+)
 
 func main() {
-	if len(os.Args) < defaultArgsNum {
+	if len(os.Args) < argNum {
 		log.Fatalln("Usage: ./your_program.sh tokenize|parse <filename>")
 	}
 
-	switch command := os.Args[1]; command {
+	command := os.Args[argNumCommand]
+	filename := os.Args[argNumFilename]
+
+	var cmd func(string) (int, error)
+
+	switch command {
 	case "tokenize":
-		filename := os.Args[2]
-
-		code, err := scanner.CmdTokenize(filename)
-		if err != nil {
-			log.Fatalf("error tokenizing %q: %s", filename, err)
-		}
-
-		os.Exit(code)
-
+		cmd = scanner.CmdTokenize
+	case "parse":
+		cmd = parser.CmdParse
 	default:
 		log.Fatalf("Unknown command: %s\n", command)
 	}
+
+	code, err := cmd(filename)
+	if err != nil {
+		log.Fatalf("error tokenizing %q: %s", filename, err)
+	}
+
+	os.Exit(code)
 }
