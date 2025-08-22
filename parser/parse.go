@@ -134,20 +134,32 @@ func (e binary) String() string {
 func (e binary) Err() error { return nil }
 
 var expressionCreators = map[scanner.TokenType]expressionType{
-	scanner.TRUE:       expressionTypeLiteral,
-	scanner.FALSE:      expressionTypeLiteral,
-	scanner.NIL:        expressionTypeLiteral,
-	scanner.NUMBER:     expressionTypeLiteral,
-	scanner.STRING:     expressionTypeLiteral,
-	scanner.LEFT_PAREN: expressionTypeGrouping,
-	scanner.MINUS:      expressionTypeUnary,
-	scanner.BANG:       expressionTypeUnary,
+	scanner.TRUE:          expressionTypeLiteral,
+	scanner.FALSE:         expressionTypeLiteral,
+	scanner.NIL:           expressionTypeLiteral,
+	scanner.NUMBER:        expressionTypeLiteral,
+	scanner.STRING:        expressionTypeLiteral,
+	scanner.LEFT_PAREN:    expressionTypeGrouping,
+	scanner.MINUS:         expressionTypeUnary,
+	scanner.BANG:          expressionTypeUnary,
+	scanner.PLUS:          expressionTypeBinary,
+	scanner.STAR:          expressionTypeBinary,
+	scanner.EQUAL:         expressionTypeBinary,
+	scanner.EQUAL_EQUAL:   expressionTypeBinary,
+	scanner.BANG_EQUAL:    expressionTypeBinary,
+	scanner.LESS:          expressionTypeBinary,
+	scanner.LESS_EQUAL:    expressionTypeBinary,
+	scanner.GREATER:       expressionTypeBinary,
+	scanner.GREATER_EQUAL: expressionTypeBinary,
+	scanner.SLASH:         expressionTypeBinary,
+	scanner.AND:           expressionTypeBinary,
+	scanner.OR:            expressionTypeBinary,
 }
 
-func newExpression(next pullNextToken) expression {
+func newExpression(next pullNextToken, prev expression) expression {
 	token, _ := next()
-	if token.Type() == scanner.EOF {
-		return nil
+	if token.Type() == scanner.EOF || token.Type() == scanner.SEMICOLON {
+		return prev
 	}
 
 	exprType, found := expressionCreators[token.Type()]
@@ -178,14 +190,16 @@ const errCodeParsing = 65
 func CmdParse(filename string) (code int, err error) {
 	tokenizer, err := scanner.NewTokenizer(filename)
 	if err != nil {
-		return
+		return code, err
 	}
 
 	next, stop := iter.Pull(tokenizer.Run())
 	defer stop()
 
+	var expr expression
+
 	for {
-		expr := newExpression(next)
+		expr := newExpression(next, expr)
 
 		if expr == nil {
 			break
@@ -198,9 +212,9 @@ func CmdParse(filename string) (code int, err error) {
 
 			break
 		}
-
-		fmt.Println(expr)
 	}
 
-	return
+	fmt.Println(expr)
+
+	return code, err
 }
